@@ -54,11 +54,19 @@ int RandomGenerator::weightedpol() {
 int RandomGenerator::unisitering() {
     return std::uniform_int_distribution<int>{0, len-1}(gen);
 }
+// int RandomGenerator::unisitelin() {
+//     int raw_site = std::uniform_int_distribution<int>{OriC - linlen, OriC + linlen - 1}(gen);
+//     return (raw_site + len) % len;  // ensures wrap-around into valid [0, len-1], if you change OriC from 1220
+// }
+
 int RandomGenerator::unisitelin() {
     return (std::uniform_int_distribution<int>{OriC-linlen,OriC+linlen-1}(gen))%len;
 }
+
 double RandomGenerator::disReal() {
     return unireal(gen);
 }
 
 #endif //INC_4DCHROM_LUCAS_RANDOMGENERATOR_H
+
+

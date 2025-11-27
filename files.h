@@ -63,7 +63,7 @@ void check_input_energies_compatibility(std::string& old_simulation_folder, std:
 void check_input_configuration_compatibility(std::string& old_simulation_folder){
     std::ifstream input_file;
     std::string word = " ";
-    input_file.open(dir + old_simulation_folder + "sim_params.txt");
+    input_file.open(dir + old_simulation_folder + "/sim_params.txt");
     if(input_file.fail()){throw std::invalid_argument( "Input configuration file doesnt exist (or sim_params.txt missing)." );}
     while(word != "Thread"){
         input_file >> word;
@@ -141,8 +141,11 @@ void read_separation_energies(std::string& old_simulation_folder, std::string& i
 }
 
 void read_configuration(std::string name, int thread_num, int step) {
-    std::ostringstream filename; filename << dir << configuration_data_folder << "Configurations/configuration_" << name << "_" << step << "_" << thread_num << ".txt";
+    std::ostringstream filename; filename << dir << old_simulation_folder << "configurations/configuration_" << name << "_" << step << "_" << thread_num << ".txt";
     std::ifstream monomers;
+
+    std::string path = filename.str();
+    std::cerr << "[read_configuration] Opening: " << path << "\n";
     monomers.open(filename.str());  //read in monomer positions
     if(monomers.fail()){throw std::invalid_argument( "configuration input file doesnt exist" );}
 
@@ -174,7 +177,7 @@ void read_input_data(){
     float exp_data;
     for(int s=0; s<number_of_stages; s++) {
         std::ostringstream filename;
-        filename << dir << "Input/" << bacteria_name << "/" << bacteria_name << "_stage_" << stages[s] << ".txt";
+        filename << dir << "averaged_normalized/Input/" << bacteria_name << "_stage_" << stages[s] << ".txt";
         input_file.open(filename.str());
         if(input_file.fail()){throw std::invalid_argument( "Missing input data for "+ bacteria_name + " at stage " + std::to_string(stages[s]) +"." );}
         while (!input_file.eof()) {
@@ -204,10 +207,11 @@ void read_input_data(){
             else if(word == "mean_positions"){
                 input_file >> word;
                 while(word != "end"){
+                    std::cout<< "Found mean_positions";
                     input_file >> site;
                     input_file >> exp_data;
                     if(sites_constrained_mean_map.find(site) != sites_constrained_mean_map.end() ){ //check if site constrained
-                        target_means[s][ sites_constrained_mean_map[site] ] = exp_data;
+                        target_means[s][sites_constrained_mean_map[site]] = exp_data; 
                         is_constrained_mean[s][ sites_constrained_mean_map[site] ] = true;
                     }
                     input_file >> word;
@@ -216,6 +220,7 @@ void read_input_data(){
             else if(word == "mean_separations"){
                 input_file >> word;
                 while(word != "end"){
+                    std::cout<< "Found mean_separations";
                     input_file >> site;
                     input_file >> exp_data;
                     if(sites_constrained_separation_map.find(site) != sites_constrained_separation_map.end() ){ //check if site constrained
@@ -228,11 +233,11 @@ void read_input_data(){
         }
         input_file.close();
 
-        // GG: extend vectors to length "number_of_threads" (needed for the distribution functions and maybe something else from the old forward code)
-        for(int i=0; i<number_of_threads; i++){
-            length[i] = length[i % number_of_stages];
-            lin_length[i] = lin_length[i % number_of_stages];
-        }
+        // // GG: extend vectors to length "number_of_threads" (needed for the distribution functions and maybe something else from the old forward code)
+        // for(int i=0; i<number_of_threads; i++){
+        //     length[i] = length[i % number_of_stages];
+        //     lin_length[i] = lin_length[i % number_of_stages];
+        // } //not with my logic (CB)
     }
 }
 
@@ -258,12 +263,12 @@ void read_fork_distribution(std::string fork_distribution_file){
         }
     }
     if(counter<number_of_threads){ throw std::invalid_argument( "Fork distribution doesn't match the thread number!"); }
-}
+} // To use if lin_length and length not set as constants. (CB)
 
 
-void get_energies_plot(const int& steps) { //saves energies as matrix
+void get_energies_plot(const int& step, const std::string& folder_name) { //saves energies as matrix
     std::ostringstream fn;
-    fn << dir << output_folder << "/" << "Energies/energies_" << steps << ".txt";
+    fn << folder_name << "/" << "Energies/energies_" << step << ".txt";
     std::ofstream final_energies;
     final_energies.open(fn.str().c_str(), std::ios_base::binary);
 
@@ -278,9 +283,9 @@ void get_energies_plot(const int& steps) { //saves energies as matrix
     final_energies.close();
 }
 
-void get_final_contacts(const int& step) {
+void get_final_contacts_averaged(const int& step, const std::string& folder_name) {
     std::ostringstream fn;
-    fn << dir << output_folder << "/" << "Contacts/contacts_" << step << ".txt";
+    fn << folder_name << "/" << "Contacts/contacts_averaged_step" << step << ".txt";
     std::ofstream final_cont;
     final_cont.open(fn.str().c_str(), std::ios_base::binary); //write contact frequencies
     for (int i = 0; i < bin_num; i++) {
@@ -288,13 +293,37 @@ void get_final_contacts(const int& step) {
             double contact;
             if (std::abs(i-j) <= 1 || (i==0 && j == bin_num - 1) || (j==0 && i == bin_num - 1)) { contact = 0; }
             else {
-                contact = final_contacts[i][j];
+                contact = final_contacts_averaged[i][j];
             }
             final_cont << contact << ' ';
         }
         final_cont << '\n';
     }
 }
+
+
+void get_final_contacts(const int& step, const std::string& buffer_str) {
+    for (int s = 0; s < number_of_stages; s++) {
+        std::ostringstream fn;
+        fn << dir << buffer_str << "_stage_" << stages[s] << "/Contacts/contacts_step_" << step << ".txt";
+        
+        std::ofstream final_cont;
+        final_cont.open(fn.str().c_str(), std::ios_base::binary);
+        
+        for (int i = 0; i < bin_num; i++) {
+            for (int j = 0; j < bin_num; j++) {
+                double contact;
+                if (std::abs(i-j) <= 1 || (i==0 && j == bin_num - 1) || (j==0 && i == bin_num - 1)) { contact = 0; }
+                else {
+                    contact = final_contacts[s][i][j];
+                }
+                final_cont << contact << ' ';
+            }
+            final_cont << '\n';
+        }
+    }
+}
+
 
 void get_contacts_xp() {
     std::ostringstream fn;
@@ -314,7 +343,7 @@ void get_contacts_xp() {
     }
 }
 
-void get_configuration(int step, std::string name, int thread_num) {
+void get_configuration(int step, std::string name, int thread_num, const std::string& output_folder) {
     std::ostringstream fn;
     fn << dir << output_folder << "/" << "Configurations/configuration_" << name << "_" << step << "_" << thread_num << ".txt";
     std::ofstream final_conf;
@@ -335,9 +364,9 @@ void get_configuration(int step, std::string name, int thread_num) {
     std::remove(fn_old.str().c_str());
 }
 
-void get_alpha_beta(int step) {
+void get_alpha_beta(int step, const std::string& folder_name) {
     std::ostringstream fn;
-    fn << dir << output_folder << "/" << "Energies/alpha_" << step << ".txt";
+    fn << folder_name << "/" << "Energies/alpha_" << step << ".txt";
     std::ofstream values;
     values.open(fn.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -346,7 +375,7 @@ void get_alpha_beta(int step) {
     values << '\n';
     values.close();
     std::ostringstream fn2;
-    fn2 << dir << output_folder << "/" << "Energies/beta_" << step << ".txt";
+    fn2 << dir << folder_name << "/" << "Energies/beta_" << step << ".txt";
     std::ofstream values2;
     values2.open(fn2.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -355,7 +384,7 @@ void get_alpha_beta(int step) {
     values2 << '\n';
     values2.close();
     std::ostringstream fn3;
-    fn3 << dir << output_folder << "/" << "Energies/beta2_" << step << ".txt";
+    fn3 << dir << folder_name << "/" << "Energies/beta2_" << step << ".txt";
     std::ofstream values3;
     values3.open(fn3.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -364,7 +393,7 @@ void get_alpha_beta(int step) {
     values3 << '\n';
     values3.close();
     std::ostringstream fn4;
-    fn4 << dir << output_folder << "/" << "Energies/alpha2_" << step << ".txt";
+    fn4 << dir << folder_name << "/" << "Energies/alpha2_" << step << ".txt";
     std::ofstream values4;
     values4.open(fn4.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -374,9 +403,9 @@ void get_alpha_beta(int step) {
     values4.close();
 }
 
-void get_z_lin_far_close(int step) {
+void get_z_lin_far_close(int step, const std::string& folder_name) {
     std::ostringstream fn;
-    fn << dir << output_folder << "/" << "Positions/close_" << step << ".txt";
+    fn << folder_name << "/" << "Positions/close_" << step << ".txt";
     std::ofstream values;
     values.open(fn.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -385,7 +414,7 @@ void get_z_lin_far_close(int step) {
     values << '\n';
     values.close();
     std::ostringstream fn2;
-    fn2 << dir << output_folder << "/" << "Positions/far_" << step << ".txt";
+    fn2 << dir << folder_name << "/" << "Positions/far_" << step << ".txt";
     std::ofstream values2;
     values2.open(fn2.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -394,7 +423,7 @@ void get_z_lin_far_close(int step) {
     values2 << '\n';
     values2.close();
     std::ostringstream fn3;
-    fn3 << dir << output_folder << "/" << "Positions/close_var_" << step << ".txt";
+    fn3 << dir << folder_name << "/" << "Positions/close_var_" << step << ".txt";
     std::ofstream values3;
     values3.open(fn3.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -403,7 +432,7 @@ void get_z_lin_far_close(int step) {
     values3 << '\n';
     values3.close();
     std::ostringstream fn4;
-    fn4 << dir << output_folder << "/" << "Positions/far_var_" << step << ".txt";
+    fn4 << dir << folder_name << "/" << "Positions/far_var_" << step << ".txt";
     std::ofstream values4;
     values4.open(fn4.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -413,9 +442,9 @@ void get_z_lin_far_close(int step) {
     values4.close();
 }
 
-void get_z_mean_rest(int site_index, int step) {
+void get_z_mean_rest(int site_index, int step , const std::string& folder_name) {
     std::ostringstream fn;
-    fn << dir << output_folder << "/" << "Positions/means_" << step << "_site" + std::to_string(sites_constrained_mean[site_index])+ ".txt";
+    fn << folder_name << "/" << "Positions/means_" << step << "_site" + std::to_string(sites_constrained_mean[site_index])+ ".txt";
     std::ofstream values;
     values.open(fn.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -429,9 +458,9 @@ void get_z_mean_rest(int site_index, int step) {
     values.close();
 }
 
-void get_z_separation_rest(int site_index, int step) {
+void get_z_separation_rest(int site_index, int step, const std::string& folder_name) {
     std::ostringstream fn;
-    fn << dir << output_folder << "/" << "Positions/separations_" << step << "_site" + std::to_string(sites_constrained_separation[site_index])+ ".txt";
+    fn << folder_name << "/" << "Positions/separations_" << step << "_site" + std::to_string(sites_constrained_separation[site_index])+ ".txt";
     std::ofstream values;
     values.open(fn.str().c_str(), std::ios_base::app);
     for (int s = 0; s < number_of_stages; s++) {
@@ -446,10 +475,10 @@ void get_z_separation_rest(int site_index, int step) {
 }
 
 
-void get_energ_coeff_mean(int step){
+void get_energ_coeff_mean(int step, const std::string& folder_name){
     for (int i = 0; i < sites_constrained_mean.size(); i++) {
         std::ostringstream fn;
-        fn << dir << output_folder << "/" << "Energies/pos_energ_" << step << "_site" << std::to_string(sites_constrained_mean[i]) << ".txt";
+        fn << folder_name << "/" << "Energies/pos_energ_" << step << "_site" << std::to_string(sites_constrained_mean[i]) << ".txt";
         std::ofstream values;
         values.open(fn.str().c_str(), std::ios_base::app);
         for (int s = 0; s < number_of_stages; s++) {
@@ -459,10 +488,10 @@ void get_energ_coeff_mean(int step){
     }
 }
 
-void get_energ_coeff_separation(int step){
+void get_energ_coeff_separation(int step, const std::string& folder_name){
     for (int i = 0; i < sites_constrained_separation.size(); i++) {
         std::ostringstream fn;
-        fn << dir << output_folder << "/" << "Energies/sep_energ_" << step << "_site" << std::to_string(sites_constrained_separation[i]) << ".txt";
+        fn << folder_name << "/" << "Energies/sep_energ_" << step << "_site" << std::to_string(sites_constrained_separation[i]) << ".txt";
         std::ofstream values;
         values.open(fn.str().c_str(), std::ios_base::app);
         for (int s = 0; s < number_of_stages; s++) {
@@ -477,9 +506,9 @@ void get_energ_coeff_separation(int step){
     }
 }
 
-void get_sim_params() {
+void get_sim_params( const std::string& folder_name) {
     std::ostringstream fn;
-    fn << dir << output_folder << "/" << "sim_params.txt";
+    fn << folder_name << "/" << "sim_params.txt";
     std::ofstream params;
     params.open(fn.str().c_str(), std::ios_base::binary);
     params << "Thread number: " << number_of_threads << '\n';
@@ -494,7 +523,7 @@ void get_sim_params() {
     }
     params << '\n';
     if(initConfig) {
-        params << "Input configurations folder: " << configuration_data_folder << '\n';
+        params << "Input configurations folder: " << old_simulation_folder << '\n';
     }
     params << "Experimental HiC data file: " << HiC_file << '\n';
 
@@ -519,9 +548,8 @@ void get_sim_params() {
     params << "offset: " << offset[0] << " "<< offset[1] << '\n';
     params << "oriC: " << oriC << '\n';
     params << "lin_lengths: ";
-    for (int s = 0; s < number_of_threads; s++) {
+    for (int s = 0; s < number_of_stages; s++) {
         params << std::setw(3) << lin_length[s] << " ";
-        if(not use_fork_distribution and s==number_of_stages-1){break;}
     }
     params << '\n';
 

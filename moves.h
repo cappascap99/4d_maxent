@@ -134,11 +134,14 @@ void update_locations_lin(int thread_num, int moved_site, Eigen::Vector3i prop_m
 
 
 bool constr_move(int thread_num, Eigen::Vector3i prop_move, int lin_pol, int site) {
-//    int stage = thread_num % number_of_stages;
-    int stage = thread_num; //GG: when length.size()=numofthreads (needed for fork distribution)
+//  int stage = thread_num % number_of_stages;
+//  int stage = thread_num; //GG: when length.size()=numofthreads (needed for fork distribution)
+    int stage = thread_num / replicates_per_stage;
+    double offset_stage = (int(length[stage]) % 2) / 2.0;
+
     if (constrain_pol && site == oriC) {
         if (lin_pol) {
-            if (std::abs(prop_move[2] - offset_z[stage]) > std::abs(polymer[thread_num][site][2] - offset_z[stage])) {
+            if (std::abs(prop_move[2] - offset_stage) > std::abs(polymer[thread_num][site][2] - offset_stage)) {
                 return false; //If the proposed move in the linear polymer brings it further away from the cell center than the circular polymer ori, deny move
             }
             else {
@@ -146,10 +149,10 @@ bool constr_move(int thread_num, Eigen::Vector3i prop_move, int lin_pol, int sit
             }
         }
         else {
-            if(prop_move[2] > offset_z[stage]){ //GG: to keep the "focus closest to a pole" in the left half of the cell. (that's how the experimental data for ecoli is processed)
+            if(prop_move[2] > offset_stage){ //GG: to keep the "focus closest to a pole" in the left half of the cell. (that's how the experimental data for ecoli is processed)
                 return false; //GG: ok, I see now that this condition was already included below
             }
-            if (std::abs(prop_move[2] - offset_z[stage]) < std::abs(lin_polymer[thread_num][site][2] - offset_z[stage]) || prop_move[2] > 0) {
+            if (std::abs(prop_move[2] - offset_stage) < std::abs(lin_polymer[thread_num][site][2] - offset_stage) || prop_move[2] > offset_stage) {
                 return false; //If the proposed move on the circular polymer brings it closer to the cell center than the linear polymer ori, or it moves past the midpoint, deny move
             }
             else {
@@ -160,18 +163,44 @@ bool constr_move(int thread_num, Eigen::Vector3i prop_move, int lin_pol, int sit
     else {return true;} //JM: if false, the proposed move will be rejected
 }
 
+// bool constr_move(int thread_num, Eigen::Vector3i prop, int lin_pol, int site){
+//     int stage = thread_num / replicates_per_stage;
+//     double offset_stage = (int(length[stage]) % 2) / 2.0;
+
+//     // Keep near-ori in left half + closer-to-pole logic (as you already have)
+//     if (constrain_pol && site == oriC) {
+//         if (lin_pol) {
+//             if (std::abs(prop[2]-offset_stage) > std::abs(polymer[thread_num][site][2]-offset_stage)) return false;
+//         } else {
+//             if (prop[2] > offset_stage) return false;
+//             if (std::abs(prop[2]-offset_stage) < std::abs(lin_polymer[thread_num][site][2]-offset_stage)) return false;
+//         }
+//         return true;
+//     }
+
+//     // NEW: keep Ter in the RIGHT half
+//     if (site == Ter) {
+//         if (prop[2] < offset_stage) return false;
+//     }
+
+//     return true;
+// }
+
+
 
 bool check_boundary_rest(Eigen::Vector3i prop_move1, int thread_num) {
-//    int stage = thread_num % number_of_stages;
-    int stage = thread_num; //GG: when length.size()=numofthreads (needed for fork distribution)
+//  int stage = thread_num % number_of_stages;
+//  int stage = thread_num; //GG: when length.size()=numofthreads (needed for fork distribution)
+    int stage = thread_num / replicates_per_stage;
+    double offset_stage = (int(length[stage]) % 2) / 2.0;
     if (boundary_cond == 1) {
         bool accept_1;
         // GG: check for prop_move1
-        if (std::abs(prop_move1[2] - offset_z[stage]) <= length[stage] / 2) { //GG: is inside the cylinder, not in a cap (z-coord)
+        if (std::abs(prop_move1[2] - offset_stage) <= length[stage] / 2) { //GG: is inside the cylinder, not in a cap (z-coord)
             accept_1 = (pow(prop_move1[0]+offset[0], 2) + pow(prop_move1[1]+offset[1], 2) <= pow(radius, 2));
         }
-        else if (std::abs(prop_move1[2] - offset_z[stage]) <= length[stage] / 2 + radius) { // GG: is in one of the caps (z-coord)
-            accept_1 = (pow(prop_move1[0]+offset[0], 2) + pow(prop_move1[1]+offset[1], 2) + pow(std::abs(prop_move1[2] - offset_z[stage]) - length[stage] / 2, 2) <= pow(radius, 2));
+        else if (std::abs(prop_move1[2] - offset_stage) <= length[stage] / 2 + radius) { // GG: is in one of the caps (z-coord)
+            accept_1 = (pow(prop_move1[0]+offset[0], 2) + pow(prop_move1[1]+offset[1], 2) + pow(std::abs(prop_move1[2] - offset_stage) - length[stage] / 2, 2) <= pow(radius, 2));
         }
         else {
             accept_1 = 0;
@@ -184,8 +213,9 @@ bool check_boundary_rest(Eigen::Vector3i prop_move1, int thread_num) {
 
 void junction_move(int thread_num, int site, int &m, int lin_pol) {
     int lin_site;
-//    int stage = thread_num % number_of_stages;
-    int stage = thread_num; //GG: when length.size()=numofthreads (needed for fork distribution)
+//  int stage = thread_num % number_of_stages;
+//  int stage = thread_num; //GG: when length.size()=numofthreads (needed for fork distribution)
+    int stage = thread_num / replicates_per_stage;
 
     //JM: Note: scheme below only works if the origin position is past the midway point of the polymer
     if (oriC + lin_length[stage] >= pol_length) { //JM: Replication has passed the 0-coordinate
@@ -377,69 +407,55 @@ void loop_move_lin(int thread_num, int site, int &m, int lin_pol) {
 }
 
 void move(int thread_num, int &m) {
-    int lin_pol = generators[thread_num].weightedpol(); //JH: prob proportional to replicated length
-    //Pick site on linear or full chromosome:
-    int site = (lin_pol==1) ? generators[thread_num].unisitelin() : generators[thread_num].unisitering();
+    int old_m = m;                          // avoid double-sampling when no step was made
+    int stage = thread_num / replicates_per_stage;
 
-//    int stage = thread_num % number_of_stages;
-    int stage = thread_num; //GG: when length.size()=numofthreads (needed for fork distribution)
+    // Decide which polymer to move. If nothing replicated, force ring.
+    int lin_pol = generators[thread_num].weightedpol();
+    if (lin_length[stage] == 0) {
+        lin_pol = 0; // force ring when unreplicated
+    }
 
-    int old_m = m; //to make sure that for m%100==0 the z-position data is not saved again when no step was made
-    //JM it seems like the relative position of the site is calculated twice: once to decide the move, and once while performing the move. This can be done more efficiently...
+    // Pick site based on the finalized polymer choice
+    int site = (lin_pol == 1)
+        ? generators[thread_num].unisitelin()
+        : generators[thread_num].unisitering();
+
+    // ----- dynamics -----
     if (lin_length[stage] != 0) {
-        if (lin_pol) { //picks linear polymer
-            if (lin_length[stage] < pol_length/2) { //replicating chromosome
-                if (oriC + lin_length[stage] >= pol_length + 3) { //JM: replication has passed zero coordinate, plus three?!
-                    if (site >= oriC - lin_length[stage] ||
-                        site <= (oriC + lin_length[stage] - 3) % pol_length) { //JM: Site is on the replicated portion of the linear polymer, and not at the junction site
+        if (lin_pol) { // linear polymer
+            if (lin_length[stage] < pol_length/2) { // partially replicated
+                if (oriC + lin_length[stage] >= pol_length + 3) { // passed zero (+3)
+                    if (site >= oriC - lin_length[stage] || site <= (oriC + lin_length[stage] - 3) % pol_length) {
                         int action = generators[thread_num].unimove();
-                        if (action == 0) {
-                            kink_move_lin(thread_num, site, m, lin_pol);
-                        } else if (action == 1) {
-                            crankshaft_move_lin(thread_num, site, m, lin_pol);
-                        } else {
-                            loop_move_lin(thread_num, site, m, lin_pol);
-                        }
+                        if (action == 0)       kink_move_lin(thread_num, site, m, lin_pol);
+                        else if (action == 1)  crankshaft_move_lin(thread_num, site, m, lin_pol);
+                        else                   loop_move_lin(thread_num, site, m, lin_pol);
                     } else if (site == (oriC + lin_length[stage] - 2) % pol_length) {
                         int action2 = generators[thread_num].unimove2();
-                        if (action2 == 0) {
-                            kink_move_lin(thread_num, site, m, lin_pol);
-                        } else {
-                            loop_move_lin(thread_num, site, m, lin_pol);
-                        }
+                        if (action2 == 0)      kink_move_lin(thread_num, site, m, lin_pol);
+                        else                   loop_move_lin(thread_num, site, m, lin_pol);
                     }
-                } else { //JM: replication has not passed the zero coordinate, plus three
-                    if (site >= oriC - lin_length[stage] && site <= oriC + lin_length[stage] - 3) {//JM: site on the replicated portion of the linear polymer, and not at the junction site
+                } else { // not passed zero (+3)
+                    if (site >= oriC - lin_length[stage] && site <= oriC + lin_length[stage] - 3) {
                         int action = generators[thread_num].unimove();
-                        if (action == 0) {
-                            kink_move_lin(thread_num, site, m, lin_pol);
-                        } else if (action == 1) {
-                            crankshaft_move_lin(thread_num, site, m, lin_pol);
-                        } else {
-                            loop_move_lin(thread_num, site, m, lin_pol);
-                        }
-                    } else if (site == (oriC + lin_length[stage] - 2) % pol_length) {//JM: if the site is one closer to the replication point: no crankshaft allowed
+                        if (action == 0)       kink_move_lin(thread_num, site, m, lin_pol);
+                        else if (action == 1)  crankshaft_move_lin(thread_num, site, m, lin_pol);
+                        else                   loop_move_lin(thread_num, site, m, lin_pol);
+                    } else if (site == (oriC + lin_length[stage] - 2) % pol_length) {
                         int action2 = generators[thread_num].unimove2();
-                        if (action2 == 0) {
-                            kink_move_lin(thread_num, site, m, lin_pol);
-                        } else {
-                            loop_move_lin(thread_num, site, m, lin_pol);
-                        }
+                        if (action2 == 0)      kink_move_lin(thread_num, site, m, lin_pol);
+                        else                   loop_move_lin(thread_num, site, m, lin_pol);
                     }
                 }
-            }
-            else {  //fully replicated chromosome
+            } else { // fully replicated
                 int action = generators[thread_num].unimove();
-                if (action == 0) {
-                    kink_move_lin(thread_num, site, m, lin_pol);
-                } else if (action == 1) {
-                    crankshaft_move_lin(thread_num, site, m, lin_pol);
-                } else {
-                    loop_move_lin(thread_num, site, m, lin_pol);
-                }
+                if (action == 0)       kink_move_lin(thread_num, site, m, lin_pol);
+                else if (action == 1)  crankshaft_move_lin(thread_num, site, m, lin_pol);
+                else                   loop_move_lin(thread_num, site, m, lin_pol);
             }
-        } else {    //picks ring polymer
-            if (lin_length[stage] < pol_length/2) { //replicating chromosome
+        } else {    // ring polymer
+            if (lin_length[stage] < pol_length/2) { // partially replicated
                 if (oriC + lin_length[stage] >= pol_length + 3) {
                     if (site == oriC - lin_length[stage] - 1 ||
                         site == (oriC + lin_length[stage] - 1) % pol_length) {
@@ -449,21 +465,14 @@ void move(int thread_num, int &m) {
                                site >= oriC - lin_length[stage] ||
                                site <= (oriC + lin_length[stage] - 3) % pol_length) {
                         int action = generators[thread_num].unimove();
-                        if (action == 0) {
-                            kink_move(thread_num, site, m, lin_pol);
-                        } else if (action == 1) {
-                            crankshaft_move(thread_num, site, m, lin_pol);
-                        } else {
-                            loop_move(thread_num, site, m, lin_pol);
-                        }
+                        if (action == 0)       kink_move(thread_num, site, m, lin_pol);
+                        else if (action == 1)  crankshaft_move(thread_num, site, m, lin_pol);
+                        else                   loop_move(thread_num, site, m, lin_pol);
                     } else if (site == oriC - lin_length[stage] - 2 ||
                                site == (oriC + lin_length[stage] - 2) % pol_length) {
                         int action2 = generators[thread_num].unimove2();
-                        if (action2 == 0) {
-                            kink_move(thread_num, site, m, lin_pol);
-                        } else {
-                            loop_move(thread_num, site, m, lin_pol);
-                        }
+                        if (action2 == 0)      kink_move(thread_num, site, m, lin_pol);
+                        else                   loop_move(thread_num, site, m, lin_pol);
                     }
                 } else {
                     if (site == oriC - lin_length[stage] - 1 || site == oriC + lin_length[stage] - 1) {
@@ -472,74 +481,72 @@ void move(int thread_num, int &m) {
                                (site >= oriC - lin_length[stage] && site <= oriC + lin_length[stage] - 3) ||
                                site >= oriC + lin_length[stage]) {
                         int action = generators[thread_num].unimove();
-                        if (action == 0) {
-                            kink_move(thread_num, site, m, lin_pol);
-                        } else if (action == 1) {
-                            crankshaft_move(thread_num, site, m, lin_pol);
-                        } else {
-                            loop_move(thread_num, site, m, lin_pol);
-                        }
+                        if (action == 0)       kink_move(thread_num, site, m, lin_pol);
+                        else if (action == 1)  crankshaft_move(thread_num, site, m, lin_pol);
+                        else                   loop_move(thread_num, site, m, lin_pol);
                     } else if (site == oriC - lin_length[stage] - 2 ||
                                site == (oriC + lin_length[stage] - 2) % pol_length) {
                         int action2 = generators[thread_num].unimove2();
-                        if (action2 == 0) {
-                            kink_move(thread_num, site, m, lin_pol);
-                        } else  {
-                            loop_move(thread_num, site, m, lin_pol);
-                        }
+                        if (action2 == 0)      kink_move(thread_num, site, m, lin_pol);
+                        else                   loop_move(thread_num, site, m, lin_pol);
                     }
                 }
-            }
-            else {  //fully replicated chromosome
+            } else { // fully replicated
                 int action = generators[thread_num].unimove();
-                if (action == 0) {
-                    kink_move(thread_num, site, m, lin_pol);
-                } else if (action == 1) {
-                    crankshaft_move(thread_num, site, m, lin_pol);
+                if (action == 0)       kink_move(thread_num, site, m, lin_pol);
+                else if (action == 1)  crankshaft_move(thread_num, site, m, lin_pol);
+                else                   loop_move(thread_num, site, m, lin_pol);
+            }
+        }
+
+        // sampling
+        if (m % res == 0 && m > old_m) {
+            z_close[thread_num]         += polymer[thread_num][oriC][2];
+            z_far[thread_num]           += lin_polymer[thread_num][oriC][2];
+            z_close_squared[thread_num] += std::pow(polymer[thread_num][oriC][2], 2);
+            z_far_squared[thread_num]   += std::pow(lin_polymer[thread_num][oriC][2], 2);
+
+            for (int i = 0; i < (int)sites_constrained_mean.size(); i++) {
+                int site_i = sites_constrained_mean[i];
+                if (!is_replicated[thread_num][site_i]) {
+                    z_mean_data[thread_num][i] += polymer[thread_num][site_i][2];
                 } else {
-                    loop_move(thread_num, site, m, lin_pol);
+                    z_mean_data[thread_num][i] +=
+                        (polymer[thread_num][site_i][2] + lin_polymer[thread_num][site_i][2]) / 2.0;
                 }
+                z_mean_samples[thread_num][i] += 1;
             }
         }
-        if (m%res==0 && m>old_m) {
-            z_close[thread_num] += polymer[thread_num][oriC][2];
-            z_far[thread_num] += lin_polymer[thread_num][oriC][2];
-            z_close_squared[thread_num] += pow(polymer[thread_num][oriC][2], 2);
-            z_far_squared[thread_num] += pow(lin_polymer[thread_num][oriC][2], 2);
 
-            for(int i=0; i<sites_constrained_mean.size(); i++){
-                if(not is_replicated[thread_num][sites_constrained_mean[i]]){
-                    z_mean_data[thread_num][i] += polymer[thread_num][ sites_constrained_mean[i] ][2];
-                }
-                else if(include_replicated_in_mean){
-                    z_mean_data[thread_num][i] += (polymer[thread_num][ sites_constrained_mean[i] ][2] + lin_polymer[thread_num][ sites_constrained_mean[i] ][2])/2.;
-                }
-            }
-            for(int i=0; i<sites_constrained_separation.size(); i++) {
-                if (is_replicated[thread_num][sites_constrained_separation[i]]) {
-                    z_separation_data[thread_num][i] += std::abs(polymer[thread_num][sites_constrained_separation[i]][2] - lin_polymer[thread_num][sites_constrained_separation[i]][2]);
-                }
-            }
+        // keep this block if you still collect ori separation (safe when vectors are empty)
+        if (lin_length[stage] > 0 && is_replicated[thread_num][oriC]
+            && !z_separation_data[thread_num].empty()
+            && !z_separation_samples[thread_num].empty() && m % res == 0 && m > old_m) {
+            double z_ring = polymer[thread_num][oriC][2];
+            double z_lin  = lin_polymer[thread_num][oriC][2];
+            z_separation_data[thread_num][0] += std::abs(z_lin - z_ring);
+            z_separation_samples[thread_num][0] += 1;
         }
-    }
-    else if(lin_pol==0) {  //simulate only one polymer // GG: with a non_replicated polymer, it still does something if lin_pol=1... (corrected now)
+
+        
+
+    } else if (lin_pol == 0) {  // unreplicated stage: only ring moves
         int action = generators[thread_num].unimove();
-        if (action == 0) {
-            kink_move(thread_num, site, m, lin_pol);
-        } else if (action == 1) {
-            crankshaft_move(thread_num, site, m, lin_pol);
-        } else {
-            loop_move(thread_num, site, m, lin_pol);
-        }
-        if (m%res==0 && m>old_m) {
-            z_close[thread_num] += polymer[thread_num][oriC][2];
-            z_close_squared[thread_num] += pow(polymer[thread_num][oriC][2], 2);
+        if (action == 0)       kink_move(thread_num, site, m, lin_pol);
+        else if (action == 1)  crankshaft_move(thread_num, site, m, lin_pol);
+        else                   loop_move(thread_num, site, m, lin_pol);
 
-            for(int i=0; i<sites_constrained_mean.size(); i++){
-                z_mean_data[thread_num][i] += polymer[thread_num][ sites_constrained_mean[i] ][2];
+        if (m % res == 0 && m > old_m) {
+            z_close[thread_num]         += polymer[thread_num][oriC][2];
+            z_close_squared[thread_num] += std::pow(polymer[thread_num][oriC][2], 2);
+
+            for (int i = 0; i < (int)sites_constrained_mean.size(); i++) {
+                z_mean_data[thread_num][i]    += polymer[thread_num][ sites_constrained_mean[i] ][2];
+                z_mean_samples[thread_num][i] += 1;
             }
         }
     }
 }
+
 
 #endif
