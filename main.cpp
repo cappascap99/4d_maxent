@@ -71,7 +71,7 @@ double radius{ 3.2 }; // Crescentus
 
 
 const int pol_length = reduction_factor*bin_num;
-const int mc_moves = 4e6;
+const int mc_moves = 3.15e7;
 //const int mc_moves = 4e3;
 //const int mc_moves = 3.8e7;
 //const int burn_in_steps = 3e7;
@@ -85,7 +85,7 @@ bool constrain_pol = true; // constrains one origin to always be the closer one 
 bool initConfig = true;
 
 //int init_config_number = 60; //iteration number of the initial configuration used
-int init_config_number = 0; //iteration number of the initial configuration used
+int init_config_number = 61; //iteration number of the initial configuration used
 const int res{1000}; //JM: how often the mean positions are sampled
 
 ///////// initial energies //////////////
@@ -93,7 +93,7 @@ bool initEnerg = false; //load initial energies?
 bool burn_in_done = false;
 //std::string energy_data_folder = "home/Documents/test/4D/HiC_data/2025-08-24_1604_averaged/Energies";
 // std::string old_simulation_folder="2025-08-25_2249_averaged/";
-std::string old_simulation_folder="2025-11-18_1525_averaged/";
+std::string old_simulation_folder="2025-12-04_1605_averaged/";
 std::string energy_data_iteration = std::to_string(init_config_number);
 
 ///////// input Hi-C data ////////////
@@ -118,20 +118,20 @@ std::string HiC_file = dir + "t_averaged_normalized_rotated.txt";
 // //double learning_rate_separations { 0.2 }; //for ori-ori distance the 2nd
 // //double learning_rate_separations { 0.05 }; //for ori-ori distance the 3rd
 
-double learning_rate = 0.2;
+double learning_rate = 0.1;
 double learning_rate_close = 0.5;
 double learning_rate_far = 0;
 double learning_rate_close_var = 0.0;
 double learning_rate_far_var = 0.0;
-double learning_rate_means = 0.5;
-double learning_rate_separations = 0.5;
+double learning_rate_means = 0.2;
+double learning_rate_separations = 0.2;
 double update_cap_factor {0.1};
 int update_cap_onset {5};
 
 /////// positional constraints ///////
 // The only constrained sites are the Oris right? //
 std::vector<int> sites_constrained_mean = {Ter}; //sites for which constraints on mean are imposed. mean of what ?
-std::vector<int> sites_constrained_separation = {oriC}; //sites for which constraints on separation are imposed. what separation ?
+std::vector<int> sites_constrained_separation = {oriC,Ter}; //sites for which constraints on separation are imposed. what separation ?
 const int n_constrained_mean = sites_constrained_mean.size();
 const int n_constrained_separation = sites_constrained_separation.size();
 std::unordered_map<int, int> sites_constrained_mean_map; // GG: keeps index of a site in the "sites_constrained_mean" list
@@ -279,18 +279,11 @@ int main() {
     //Read in constraints//
     read_input_data(); 
 
-    std::cout << "[DBG] is_constrained_mean[0][0]=" << (is_constrained_mean[0][0]?1:0) << "\n";
 
+    // std::cout << "target ori-pole distance for stage s=" << 0 << " is: ";
+    // for (double v1 : xp_z_close[0]) std::cout << v1 << ' ';
+    // std::cout << '\n';
 
-    for (int s=0; s<number_of_stages; ++s) {
-    //     std::cout << "target ori separation for stage s=" << s << " is: ";
-    //     for (double v1 : target_separations[s]) std::cout << v1 << ' ';
-    //     std::cout << '\n';
-
-        std::cout << "target Ter position for stage s=" << s << " is: ";
-        for (double v2 : target_means[s]) std::cout << v2 << ' ';
-        std::cout << '\n';
-    }
     read_file(xp_contacts, HiC_file);
 
     //Read in energies//
@@ -345,11 +338,11 @@ int main() {
     }
 
 
-    for (int s=0; s<number_of_stages; ++s) {
-        double offset_stage = (int(length[s]) % 2) / 2.0; // stage-specific
-        xp_z_close_simunits[s] = xp_z_close[s]*(length[s] + 2*radius)- (length[s]/2 + radius - offset_stage);
-        xp_z_far_simunits[s]   = xp_z_far[s]  *(length[s] + 2*radius) - (length[s]/2 + radius - offset_stage);
-    }
+    // for (int s=0; s<number_of_stages; ++s) {
+    //     double offset_stage = (int(length[s]) % 2) / 2.0; // stage-specific
+    //     xp_z_close_simunits[s] = xp_z_close[s]*(length[s] + 2*radius)- (length[s]/2 + radius - offset_stage);
+    //     xp_z_far_simunits[s]   = xp_z_far[s]  *(length[s] + 2*radius) - (length[s]/2 + radius - offset_stage);
+    // }
 
 
     //Save the input parameters of the simulation in "sim_params.txt"//
@@ -411,8 +404,25 @@ int main() {
     burn_in_done = true;
 
     std::cout<<"Start gradient descent..."<<std::endl;
-    double learning_rate_start = 0.5; // Initial learning rate
-    double learning_rate_end = 0.01; // Final learning rate
+
+        std::cout << "[DBG] is_constrained_mean[0][0]=" << (is_constrained_mean[0][0]?1:0) << "\n";
+
+
+    for (int s=0; s<number_of_stages; ++s) {
+        std::cout << "target ori-ori separation for stage s=" << s << " is: "
+                << target_separations[s][0] << '\n';
+
+        std::cout << "target Ter-pole distance for stage s=" << s << " is: ";
+        for (double v2 : target_means[s]) std::cout << v2 << ' ';
+        std::cout << '\n';
+    }
+
+    std::cout << "target ori-ter separation for stage s=0 is: "
+            << target_separations[0][1] << '\n';
+
+
+    // double learning_rate_start = 0.5; // Initial learning rate
+    // double learning_rate_end = 0.01; // Final learning rate
 
     // double learning_rate_separations_start = 0.5; // Initial learning rate
     // double learning_rate_separations_end = 0.01; // Final learning rate
@@ -460,37 +470,37 @@ int main() {
                 t.join();
             }
         }
-        for (int l=0; l<replicates_per_stage; ++l)
-            std::cout << "[DBG] l="<<l<<" z_mean_samples="<<z_mean_samples[l][0]
-                        <<" z_mean_sum="<<z_mean_data[l][0]<<"\n";
+        // for (int l=0; l<replicates_per_stage; ++l)
+        //     std::cout << "[DBG] l="<<l<<" z_mean_samples="<<z_mean_samples[l][0]
+        //                 <<" z_mean_sum="<<z_mean_data[l][0]<<"\n";
 
-        for (int s = 0; s < number_of_stages; ++s) {
-            int i = replicates_per_stage * s;
-            double cell = length[s] + 2*radius;
-            // z at oriC (ring always exists; lin only if replicated at this stage)
-            double zc = static_cast<double>(polymer[i][oriC][2]);
-            double zf = (lin_length[s] > 0)
-                        ? static_cast<double>(lin_polymer[i][oriC][2])
-                        : zc;
+        // for (int s = 0; s < number_of_stages; ++s) {
+        //     int i = replicates_per_stage * s;
+        //     double cell = length[s] + 2*radius;
+        //     // z at oriC (ring always exists; lin only if replicated at this stage)
+        //     double zc = static_cast<double>(polymer[i][oriC][2]);
+        //     double zf = (lin_length[s] > 0)
+        //                 ? static_cast<double>(lin_polymer[i][oriC][2])
+        //                 : zc;
             
-            double z_pos_ter = static_cast<double>(polymer[i][Ter][2]);
-            double z_pos_ter_norm = z_pos_ter / cell;
-            double sep_sim  = std::abs(zf - zc);
-            double sep_norm = sep_sim / cell;
+        //     double z_pos_ter = static_cast<double>(polymer[i][Ter][2]);
+        //     double z_pos_ter_norm = z_pos_ter / cell;
+        //     double sep_sim  = std::abs(zf - zc);
+        //     double sep_norm = sep_sim / cell;
 
-            std::cout << "step=" << step
-                    << " t=" << i
-                    << " s=" << s
-                    << " cell=" << cell
-                    << " lin_len=" << lin_length[s]
-                    << " z_ring=" << zc
-                    << " z_lin="  << zf
-                    << " sep_sim=" << sep_sim
-                    << " sep_norm="<< sep_norm
-                    << " z_pos_ter_sim=" << z_pos_ter
-                    << " z_pos_ter_norm="<< z_pos_ter_norm
-                    << '\n';
-        }
+        //     std::cout << "step=" << step
+        //             << " t=" << i
+        //             << " s=" << s
+        //             << " cell=" << cell
+        //             << " lin_len=" << lin_length[s]
+        //             << " z_ring=" << zc
+        //             << " z_lin="  << zf
+        //             << " sep_sim=" << sep_sim
+        //             << " sep_norm="<< sep_norm
+        //             << " z_pos_ter_sim=" << z_pos_ter
+        //             << " z_pos_ter_norm="<< z_pos_ter_norm
+        //             << '\n';
+        // }
 
         // Step 1: average over replicates per stage
         for (int s = 0; s < number_of_stages; s++) {
@@ -612,14 +622,15 @@ int main() {
             for (int i = 0; i < n_constrained_mean; ++i) {
                 stage_sum_val[stage][i]   += z_mean_data[l][i];  // Accumulate z_mean_data
                 stage_count_val[stage][i] += z_mean_samples[l][i]; // Track the number of samples for each site
-                std::cout <<"stage_count_val of stage "<< stage << " is " << stage_count_val[stage][i] <<" and stage_sum_val  "<< stage_sum_val[stage][i] ;
+                // std::cout <<"stage_count_val of stage "<< stage << " is " << stage_count_val[stage][i] <<" and stage_sum_val  "<< stage_sum_val[stage][i] ;
             }
 
             // Accumulate the separation data 
             for (int i = 0; i < n_constrained_separation; ++i) {
                 stage_sum_sep[stage][i]   += z_separation_data[l][i];
                 stage_count_sep[stage][i] += z_separation_samples[l][i];
-                std::cout <<"stage_count_sep of stage "<< stage << " is " << stage_count_sep[stage][i] <<" and stage_sum_sep  "<< stage_sum_sep[stage][i] ;
+                std::cout <<"stage_count_sep of stage o for ori-ter is " << stage_count_sep[0][1] <<" and stage_sum_sep  "<< stage_sum_sep[0][1]<< '\n'<<std::endl ;
+                std::cout <<"stage_count_sep of stage "<<stage<< " for ori-ter is " << stage_count_sep[stage][0] <<" and stage_sum_sep  "<< stage_sum_sep[stage][0]<< '\n'<<std::endl ;
             }   
         }
         
@@ -646,7 +657,7 @@ int main() {
                 double mean_val = stage_count_val[s][i] ? stage_sum_val[s][i] / double(stage_count_val[s][i]) : 0.0;
                 // std::cout << "Calculated mean_val[" << s << "][" << i << "] = " << mean_val << std::endl;
 
-                std::cout <<"stage_count_val of stage "<< s << " is " << stage_count_val[s][i] <<" and stage_sum_val  "<< stage_sum_val[s][i] <<"mean val="<< mean_val << std::endl;
+                // std::cout <<"stage_count_val of stage "<< s << " is " << stage_count_val[s][i] <<" and stage_sum_val  "<< stage_sum_val[s][i] <<"mean val="<< mean_val << std::endl;
 
                 // Optional unit fix if sampling was in sim units:
                 // mean_val /= (length[s] + 2*radius);
@@ -661,23 +672,40 @@ int main() {
 
         // Convert to per-stage averages for separation data.
         for (int s = 0; s < number_of_stages; ++s) {
-            for (int i = 0; i < n_constrained_separation; ++i) {
+            if (s==0) {
                 
                 // Debug print to check the values of stage_count_sep and stage_sum_sep
                 // std::cout << "Checking stage_count_sep[" << s << "][" << i << "]: " << stage_count_sep[s][i] << std::endl;
                 // std::cout << "Checking stage_sum_sep[" << s << "][" << i << "]: " << stage_sum_sep[s][i] << std::endl;
 
-                double mean_sep = stage_count_sep[s][i] ? stage_sum_sep[s][i] / double(stage_count_sep[s][i]) : 0.0;
-                std::cout <<"stage_count_sep of stage "<< s << " is " << stage_count_sep[s][i] <<" and stage_sum_sep  "<< stage_sum_sep[s][i] <<"mean sep="<< mean_sep<< std::endl;
+                double mean_sep = stage_count_sep[s][1] ? stage_sum_sep[s][1] / double(stage_count_sep[s][1]) : 0.0;
+                std::cout <<"stage_count_sep of stage "<< s << " is " << stage_count_sep[s][1] <<" and stage_sum_sep  "<< stage_sum_sep[s][1] <<"mean sep="<< mean_sep<< std::endl;
 
                 // Optional unit fix if sampling was in sim units:
                 // mean_sep /= (length[s] + 2*radius);
 
-                z_separation_data_tot[s][i] = mean_sep;
+                z_separation_data_tot[s][1] = mean_sep;
+                std::cout << "[SEP] stage " << s
+                            << " mean_sep_sim=" << z_separation_data_tot[s][1]
+                            << " n=" << stage_count_sep[s][1] << '\n';
+            }
+            else {
+                
+                // Debug print to check the values of stage_count_sep and stage_sum_sep
+                // std::cout << "Checking stage_count_sep[" << s << "][" << i << "]: " << stage_count_sep[s][i] << std::endl;
+                // std::cout << "Checking stage_sum_sep[" << s << "][" << i << "]: " << stage_sum_sep[s][i] << std::endl;
+
+                double mean_sep = stage_count_sep[s][0] ? stage_sum_sep[s][0] / double(stage_count_sep[s][0]) : 0.0;
+                std::cout <<"stage_count_sep of stage "<< s << " is " << stage_count_sep[s][0] <<" and stage_sum_sep  "<< stage_sum_sep[s][0] <<"mean sep="<< mean_sep<< std::endl;
+
+                // Optional unit fix if sampling was in sim units:
+                // mean_sep /= (length[s] + 2*radius);
+
+                z_separation_data_tot[s][0] = mean_sep;
                 std::cout << "[SEP] stage " << s
                             << " mean_sep_sim=" << z_separation_data_tot[s][0]
                             << " n=" << stage_count_sep[s][0] << '\n';
-            }
+            }            
         }
 
 
@@ -691,11 +719,18 @@ int main() {
         update_E(step); //JM: Updates pairwise interaction energies
     
         if (n_constrained_separation > 0) {
+            double pre_sep_ori_ter = z_separation_data_tot[0][1];
+            double cell_0 = length[0] + 2*radius;
+            std::cout <<" pre sep ORI-TER at stage 0= "<<pre_sep_ori_ter
+                    << " post ORI-TER ≈"<< pre_sep_ori_ter / cell_0
+                    << '\n';
+
+
             for (int s = 0; s < number_of_stages; ++s) {
-                double pre_sep = z_separation_data_tot[s][0];
+                double pre_sep_oris = z_separation_data_tot[s][0];
                 double cell = length[s] + 2*radius;
-                std::cout << "[UNITSCHK] s="<<s<<" pre sep="<<pre_sep
-                        << " post≈"<< pre_sep / cell
+                std::cout << "[UNITSCHK] s="<<s<<" pre sep ORI-ORI = "<<pre_sep_oris
+                        << " post ORI-ORI ≈"<< pre_sep_oris / cell
                         << " cell="<<cell << '\n';
             }
         }
@@ -705,10 +740,15 @@ int main() {
                 double cell = length[s] + 2*radius;
                 double offset_stage = (int(length[s]) % 2) / 2.0;
                 double left_pole_z  = -(length[s]/2 + radius - offset_stage);
+                double right_pole_z = +(length[s]/2 + radius - offset_stage);
+                double dleft_close  =  pre_mean - left_pole_z;
+                double dright_close =  right_pole_z - pre_mean;
+                double d_nearest_close = std::min(dleft_close, dright_close);
 
                 std::cout << "[UNITSCHK] s="<<s<<" pre mean="<<pre_mean
-                        << " post≈"<< (pre_mean - left_pole_z) / cell
-                        << "different post (is it better)"<< pre_mean / cell
+                        << "closest to left pole normalized" << dleft_close / cell
+                        << "closest to right pole normalized" << dright_close / cell
+                        << " closest to nearest pole normalized"<< d_nearest_close / cell
                         << " target " << target_means[s][0]
                         << " cell="<<cell << '\n';
             }
@@ -718,14 +758,14 @@ int main() {
 
         update_energ_coeff_mean(step);
         update_energ_coeff_separation(step);
-        update_alpha_beta(step);
+        //update_alpha_beta(step);
 
         //save simulation parameters//
         get_final_contacts(step, buffer_str);
         get_final_contacts_averaged(step, general_output_folder);
         get_energ_coeff_mean(step,general_output_folder);
         get_energ_coeff_separation(step,general_output_folder);
-        get_alpha_beta(step,general_output_folder); //JM: Saves new values alpha and beta
+        //get_alpha_beta(step,general_output_folder); //JM: Saves new values alpha and beta
         get_z_lin_far_close(step,general_output_folder); //JM: Saves new values ori positions
         get_energies_plot(step,general_output_folder); //JM: Saves pairwise interaction energies
         for (int i=0;i< n_constrained_mean;i++){
@@ -745,9 +785,9 @@ int main() {
 }
 
 // Linear decay of learning rate function
-double compute_learning_rate(int step, double learning_rate_start, double learning_rate_end, int max_steps) {
-    return learning_rate_start - (learning_rate_start - learning_rate_end) * (step / static_cast<double>(max_steps));
-}
+// double compute_learning_rate(int step, double learning_rate_start, double learning_rate_end, int max_steps) {
+//     return learning_rate_start - (learning_rate_start - learning_rate_end) * (step / static_cast<double>(max_steps));
+// }
 
 void run(int thread_num, int move_num) {
     int m = 0;
@@ -866,11 +906,11 @@ void normalize_measured_z(){
             double dleft_close  =  zc - left_pole_z;
             double dright_close =  right_pole_z - zc;
             double d_nearest_close = std::min(dleft_close, dright_close);
-            if (dleft_close <= dright_close) {
-                std::cout << "The ori is closest to LEFT pole at stage"<< s <<"\n";
-            } else {
-                std::cout << "The ori is closest to RIGHT pole at stage"<< s <<"\n";
-            }
+            // if (dleft_close <= dright_close) {
+            //     std::cout << "The ori is closest to LEFT pole at stage"<< s <<"\n";
+            // } else {
+            //     std::cout << "The ori is closest to RIGHT pole at stage"<< s <<"\n";
+            // }
 
             z_close_tot[s] =  d_nearest_close / total_cell_length;
             std::cout << "z_close_tot at stage "<< s <<" is " << z_close_tot[s] <<" after normalization"<< "\n";
@@ -896,21 +936,23 @@ void normalize_measured_z(){
             double dleft_mean  =  z - left_pole_z;
             double dright_mean =  right_pole_z - z;
             double d_nearest_mean = std::min(dleft_mean, dright_mean);
-            if (dleft_mean <= dright_mean) {
-                std::cout << "The ter is closest to LEFT pole at stage"<< s <<"\n";
-            } else {
-                std::cout << "The ter is closest to RIGHT pole at stage"<< s <<"\n";
-            }
+            // if (dleft_mean <= dright_mean) {
+            //     std::cout << "The ter is closest to LEFT pole at stage"<< s <<"\n";
+            // } else {
+            //     std::cout << "The ter is closest to RIGHT pole at stage"<< s <<"\n";
+            // }
 
             z_mean_data_tot[s][i] = d_nearest_mean / total_cell_length;
             std::cout << "z_mean_data_tot at stage "<< s <<" is " << z_mean_data_tot[s][i] <<" after normalization"<< "\n";
         }
 
         // separations: just rescale to cell length
-        for (int i=0; i<sites_constrained_separation.size(); i++){
-            z_separation_data_tot[s][i] /= total_cell_length;
+        if (s>0) {
+        z_separation_data_tot[s][0] /= total_cell_length;
         }
     }
+    double cell_length_0 = length[0] + 2*radius;
+    z_separation_data_tot[0][1] /= cell_length_0;
 }
 
 
@@ -1033,36 +1075,45 @@ void update_energ_coeff_mean (int step) {
 //     }
 // }
 
+
 void update_energ_coeff_separation (int step) {
     for (int stage = 0; stage < number_of_stages; ++stage) {
         for (int i = 0; i < (int)sites_constrained_separation.size(); ++i) {
-            if (!is_constrained_separation[stage][i]) continue;   // early skip
+
+            if (!is_constrained_separation[stage][i]) continue; // skip unconstrained
 
             int site = sites_constrained_separation[i];
-            bool any_rep = false;
-            for (int r = 0; r < replicates_per_stage && !any_rep; ++r) {
-                int idx = stage * replicates_per_stage + r;
-                any_rep |= is_replicated[idx][site];
+
+            // ---- CASE 1: ori–ori separation (site == oriC) ----
+            if (site == oriC) {
+                bool any_rep = false;
+                for (int r = 0; r < replicates_per_stage && !any_rep; ++r) {
+                    int idx = stage * replicates_per_stage + r;
+                    any_rep |= is_replicated[idx][site];
+                }
+                if (!any_rep) continue; // no replication at ori -> no ori–ori distance
+
+                energ_coeff_separation[stage][0] +=
+                    learning_rate_separations *
+                    (z_separation_data_tot[stage][0] - target_separations[stage][0]);
             }
-            if (!any_rep) continue;
+            std::cout<< " Target separation for Ori-Ori at stage " << stage << " is " << target_separations[stage][0] << " and we now have an Ori-Ter separation at stage "<< stage<< " of "<< z_separation_data_tot[stage][0] << std::endl;
 
-            energ_coeff_separation[stage][i] +=
-                learning_rate_separations *
-                (z_separation_data_tot[stage][i] - target_separations[stage][i]);
+            // ---- CASE 2: ori–Ter separation (site == Ter) ----
+            if (site == Ter) {
+                // you said: ori–Ter only at stage 0
+                if (stage != 0) continue;
+
+                energ_coeff_separation[stage][1] +=
+                    learning_rate_separations *
+                    (z_separation_data_tot[stage][1] - target_separations[stage][1]);
+                    std::cout<< " Target separation for Ori-Ter at stage " << stage << " is " << target_separations[stage][1]<< " and we now have an Ori-Ter separation at stage "<< stage<< " of "<< z_separation_data_tot[stage][1] << std::endl;
+            }
+            
         }
-    //     for (double v : target_separations[stage]) std::cout << v << ' ';
-    //     std::cout << '\n';
-
-    //     std::cout << "energ_coeff_separation for stage s=" << stage << " is: ";
-    //     for (double v : energ_coeff_separation[stage]) std::cout << v << ' ';
-    //     std::cout << '\n';
-
-    //     std::cout << "z_separation_data_tot for stage s=" << stage << " is: ";
-    //     for (double v : z_separation_data_tot[stage]) std::cout << v << ' ';
-    //     std::cout << '\n';
-    // std::cout << "n_sites=" << sites_constrained_separation.size() << '\n';    
     }
 }
+
 
 void set_unconstrained_energies_to_zero() { //for safety: makes sure that the initial energies with no corresponding experimental constraints are 0
     for (int s=0; s<number_of_stages; s++){

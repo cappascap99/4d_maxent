@@ -518,34 +518,63 @@ void move(int thread_num, int &m) {
             }
         }
 
-        // keep this block if you still collect ori separation (safe when vectors are empty)
+        // ori–ori separation (only meaningful when ori is replicated)
         if (lin_length[stage] > 0 && is_replicated[thread_num][oriC]
             && !z_separation_data[thread_num].empty()
-            && !z_separation_samples[thread_num].empty() && m % res == 0 && m > old_m) {
-            double z_ring = polymer[thread_num][oriC][2];
-            double z_lin  = lin_polymer[thread_num][oriC][2];
-            z_separation_data[thread_num][0] += std::abs(z_lin - z_ring);
-            z_separation_samples[thread_num][0] += 1;
-        }
+            && !z_separation_samples[thread_num].empty()
+            && m % res == 0 && m > old_m) {
 
-        
+            auto it = sites_constrained_separation_map.find(oriC);
+            if (it != sites_constrained_separation_map.end()) {
+                int sep_idx = it->second;   // should be 0
 
-    } else if (lin_pol == 0) {  // unreplicated stage: only ring moves
-        int action = generators[thread_num].unimove();
-        if (action == 0)       kink_move(thread_num, site, m, lin_pol);
-        else if (action == 1)  crankshaft_move(thread_num, site, m, lin_pol);
-        else                   loop_move(thread_num, site, m, lin_pol);
+                double z_ring = polymer[thread_num][oriC][2];
+                double z_lin  = lin_polymer[thread_num][oriC][2];
+                double d_ori_ori = std::abs(z_lin - z_ring);
 
-        if (m % res == 0 && m > old_m) {
-            z_close[thread_num]         += polymer[thread_num][oriC][2];
-            z_close_squared[thread_num] += std::pow(polymer[thread_num][oriC][2], 2);
-
-            for (int i = 0; i < (int)sites_constrained_mean.size(); i++) {
-                z_mean_data[thread_num][i]    += polymer[thread_num][ sites_constrained_mean[i] ][2];
-                z_mean_samples[thread_num][i] += 1;
+                z_separation_data[thread_num][sep_idx]     += d_ori_ori;
+                z_separation_samples[thread_num][sep_idx]  += 1;
             }
         }
+    } 
+
+    else if (lin_pol == 0) { // unreplicated stage: only ring moves
+    int action = generators[thread_num].unimove();
+    if (action == 0)      kink_move(thread_num, site, m, lin_pol);
+    else if (action == 1) crankshaft_move(thread_num, site, m, lin_pol);
+    else                  loop_move(thread_num, site, m, lin_pol);
+
+    if (m % res == 0 && m > old_m) {
+        z_close[thread_num]        += polymer[thread_num][oriC][2];
+        z_close_squared[thread_num] += std::pow(polymer[thread_num][oriC][2], 2);
+
+        for (int i = 0; i < (int)sites_constrained_mean.size(); i++) {
+            z_mean_data[thread_num][i] += polymer[thread_num][ sites_constrained_mean[i] ][2];
+            z_mean_samples[thread_num][i] += 1;
+        }
+
+        // --- NEW: ori–Ter separation at stage 0 (ring only) ---
+        int stage = thread_num / replicates_per_stage;
+        if (stage == 0
+            && !z_separation_data[thread_num].empty()
+            && !z_separation_samples[thread_num].empty()) {
+
+            auto it_sep = sites_constrained_separation_map.find(Ter);
+            if (it_sep != sites_constrained_separation_map.end()) {
+                int sep_idx_ter = it_sep->second;   // should be 1
+
+                double z_ori = polymer[thread_num][oriC][2];
+                double z_ter = polymer[thread_num][Ter][2];
+                double d_ori_ter = std::abs(z_ori - z_ter);
+
+                z_separation_data[thread_num][sep_idx_ter]    += d_ori_ter;
+                z_separation_samples[thread_num][sep_idx_ter] += 1;
+            }
+        }
+        // --- end NEW block ---
     }
+}
+    
 }
 
 

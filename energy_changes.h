@@ -23,7 +23,7 @@ double delta_E_other(std::vector<Vector3i>& polym, std::vector<Vector3i>& other_
                 energy_change += Interaction_E[elem][red_i_plus_one];
             }
         }
-        if (locations_lin[thread_num].find({ prop_move1[0],prop_move1[1],prop_move1[2] }) != locations[thread_num].end()) {
+        if (locations_lin[thread_num].find({ prop_move1[0],prop_move1[1],prop_move1[2] }) != locations_lin[thread_num].end()) {
             for (auto elem : locations_lin[thread_num][{ prop_move1[0],prop_move1[1],prop_move1[2] }]) {
                 energy_change += Interaction_E[elem][red_i_plus_one];
             }
@@ -76,24 +76,75 @@ double delta_E_other(std::vector<Vector3i>& polym, std::vector<Vector3i>& other_
 
     int moved_site1 = (site + 1) % pol_length;
 
-    //energy differences from means
-    if(energy_mean_map[stage].find(moved_site1) != energy_mean_map[stage].end()){ //if site moved_site1 is constrained
-        if(not is_replicated[thread_num][moved_site1]) {
-            energy_change += energy_mean_map[stage][moved_site1] * (prop_move1[2] - polym[moved_site1][2]);
-        }
-        else if(include_replicated_in_mean){
-            energy_change += energy_mean_map[stage][moved_site1] * (prop_move1[2] - polym[moved_site1][2]) / 2.;
+    // energy differences from means: use *distance to nearest pole / cell length*
+    if (energy_mean_map[stage].find(moved_site1) != energy_mean_map[stage].end()) {
+        double coeff = energy_mean_map[stage][moved_site1];
+
+        double total_cell_length = length[stage] + 2*radius;
+        double offset_stage = (int(length[stage]) % 2) / 2.0;
+        double left_pole_z  = -(length[stage]/2 + radius - offset_stage);
+        double right_pole_z = +(length[stage]/2 + radius - offset_stage);
+
+        auto nearest_norm = [&](double z) {
+            double dleft  =  z - left_pole_z;
+            double dright =  right_pole_z - z;
+            return std::min(dleft, dright) / total_cell_length;   // same metric as normalize_measured_z
+        };
+
+        double d_old = nearest_norm(polym[moved_site1][2]);
+        double d_new = nearest_norm(prop_move1[2]);
+
+        if (!is_replicated[thread_num][moved_site1]) {
+            energy_change += coeff * (d_new - d_old);
+        } else if (include_replicated_in_mean) {
+            energy_change += coeff * (d_new - d_old) / 2.0;
         }
     }
     //energy differences from separations
-    if(is_replicated[thread_num][moved_site1] && energy_separation_map[stage].find(moved_site1) != energy_separation_map[stage].end()){
-        // keys of energy_separation_map should only contain replicated sites (two needed to calculate separation)
-        // should add a checker for this here DONE
-        energy_change += energy_separation_map[stage][moved_site1] * (std::abs(other_polym[moved_site1][2] - prop_move1[2]) - std::abs(other_polym[moved_site1][2] - polym[moved_site1][2]));
+    // --- Existing generic separation (ori–ori, etc.) ---
+    if (is_replicated[thread_num][moved_site1] &&
+        energy_separation_map[stage].find(moved_site1) != energy_separation_map[stage].end())
+    {
+        energy_change += energy_separation_map[stage][moved_site1] *
+            (std::abs(other_polym[moved_site1][2] - prop_move1[2]) -
+            std::abs(other_polym[moved_site1][2] - polym[moved_site1][2]));
     }
 
-    return energy_change;
-}
+    // --- NEW: ori–Ter separation at stage 0 (single-chromosome) ---
+    if (stage == 0 &&
+        energy_separation_map[stage].find(Ter) != energy_separation_map[stage].end())
+    {
+        double coeff = energy_separation_map[stage][Ter];   // this is energ_coeff_separation[0][1]
+
+        int moved = moved_site1;              // (site+1)%pol_length
+        bool moved_is_ori = (moved == oriC);
+        bool moved_is_ter = (moved == Ter);
+
+        // Only matters if the move touches oriC or Ter on the ring
+        if (!lin_pol && (moved_is_ori || moved_is_ter)) {
+            // old positions on the ring
+            double z_ori_old = polymer[thread_num][oriC][2];
+            double z_ter_old = polymer[thread_num][Ter][2];
+
+            // new positions: start from old, then override the moved one
+            double z_ori_new = z_ori_old;
+            double z_ter_new = z_ter_old;
+
+            if (moved_is_ori) {
+                z_ori_new = prop_move1[2];
+            } else if (moved_is_ter) {
+                z_ter_new = prop_move1[2];
+            }
+
+            double d_old = std::abs(z_ori_old - z_ter_old);
+            double d_new = std::abs(z_ori_new - z_ter_new);
+
+            energy_change += coeff * (d_new - d_old);
+        }
+    }
+
+        return energy_change;
+    }
 
 double delta_E_crankshaft(std::vector<Vector3i>& polym, std::vector<Vector3i>& other_polym, int site, Vector3i prop_move1, Vector3i prop_move2, int thread_num, int lin_pol) {
     double energy_change1 = delta_E_other(polym, other_polym, site, prop_move1, thread_num, lin_pol);
